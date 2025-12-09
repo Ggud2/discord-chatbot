@@ -39,8 +39,7 @@ def shuffle_order():
     random.shuffle(order_list)
     order_map = {uid: idx for idx, uid in enumerate(order_list)}
 
-
-@bot.tree.command(name="start", description="채널 참여자에게 랜덤 순서를 부여하고 게임을 시작합니다.")
+@bot.tree.command(name="start", description="현재 채널 참여자에게 랜덤 번호를 부여하고 DM을 보냅니다.")
 async def start(interaction: discord.Interaction):
     global order_map, order_list, active
 
@@ -58,9 +57,10 @@ async def start(interaction: discord.Interaction):
         f"✨ 총 {len(members)}명이 참가했습니다! 순서가 무작위로 정해졌습니다. DM을 확인하세요!"
     )
 
+    # 각 사용자에게 DM 보내기
     for i, uid in enumerate(order_list):
         user = await bot.fetch_user(uid)
-        await user.send(f"당신은 **{i + 1}번째** 입니다.")
+        await user.send(f"당신은 **{i+1}번째** 입니다.")
 
 
 @bot.tree.command(name="shuffle", description="현재 참가자 그대로 순서를 재랜덤합니다.")
@@ -115,6 +115,16 @@ async def on_message(message):
     next_id = order_list[next_idx]
 
     next_user = await bot.fetch_user(next_id)
-    await next_user.send(f"📩 전달된 메시지:\n\n{message.content}")
+    
+    content = f"📩{message.content}" if message.content.strip() else "📩"
+
+    if message.attachments:
+        files = []
+        for att in message.attachments:
+            fp = await att.to_file()
+            files.append(fp)
+        await next_user.send(content, files = files)
+    else:
+        await next_user.send(content)
 
 bot.run(TOKEN)
