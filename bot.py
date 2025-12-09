@@ -18,32 +18,39 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-order_map = {}  # user_id -> order number
-order_list = [] # [user_id1, user_id2, user_id3]
+order_map = {}      # user_id -> index in order_list
+order_list = []     # 순서대로 user_id 저장
 
 
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Slash commands synced: {synced}")
+    except Exception as e:
+        print(e)
 
 
-@bot.command(name="시작!")
-async def start(ctx):
+@bot.tree.command(name="start", description="현재 채널 참여자에게 랜덤 번호를 부여하고 DM을 보냅니다.")
+async def start(interaction: discord.Interaction):
     global order_map, order_list
 
-    members = [member for member in ctx.channel.members if not member.bot]
+    members = [m for m in interaction.channel.members if not m.bot]
 
-    if len(members) != 3:
-        await ctx.send("👀 참가 인원은 정확히 3명이어야 합니다.")
+    if len(members) < 2:
+        await interaction.response.send_message("👀 최소 2명 이상이 있어야 게임을 시작할 수 있습니다.", ephemeral=True)
         return
 
     random.shuffle(members)
     order_list = [m.id for m in members]
+    order_map = {m.id: i for i, m in enumerate(members)}
 
-    order_map = {member.id: i for i, member in enumerate(members)}
+    await interaction.response.send_message(
+        f"✨ 총 {len(members)}명이 참가했습니다! 순서가 무작위로 정해졌습니다. DM을 확인하세요!"
+    )
 
-    await ctx.send("✨ 순서가 무작위로 정해졌습니다. 각자에게 DM을 확인하세요!")
-
+    # 각 사용자에게 DM 보내기
     for i, member in enumerate(members):
         await member.send(f"당신은 **{i+1}번째** 입니다.")
 
@@ -52,24 +59,21 @@ async def start(ctx):
 async def on_message(message):
     await bot.process_commands(message)
 
-    # DM 에서만 메시지 전달
+    # DM에서만 동작
     if message.guild is not None:
         return
     if message.author.bot:
         return
     if not order_map:
         return
-
-    player_id = message.author.id
-
-    if player_id not in order_map:
+    if message.author.id not in order_map:
         return
 
-    current_order = order_map[player_id]
-    next_order = (current_order + 1) % 3
-    next_id = order_list[next_order]
+    idx = order_map[message.author.id]
+    next_idx = (idx + 1) % len(order_list)   # 마지막 번호는 다시 첫 번째로 순환
+    next_user_id = order_list[next_idx]
 
-    next_user = await bot.fetch_user(next_id)
+    next_user = await bot.fetch_user(next_user_id)
     await next_user.send(f"📩 전달된 메시지:\n\n{message.content}")
 
 bot.run(TOKEN)
