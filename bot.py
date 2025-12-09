@@ -20,6 +20,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 order_map = {}      # user_id -> index in order_list
 order_list = []     # 순서대로 user_id 저장
+active = False      # 현재 진행중 여부
 
 
 @bot.event
@@ -32,9 +33,16 @@ async def on_ready():
         print(e)
 
 
-@bot.tree.command(name="start", description="현재 채널 참여자에게 랜덤 번호를 부여하고 DM을 보냅니다.")
+def shuffle_order():
+    """order_list를 재랜덤 → order_map 업데이트"""
+    global order_list, order_map
+    random.shuffle(order_list)
+    order_map = {uid: idx for idx, uid in enumerate(order_list)}
+
+
+@bot.tree.command(name="start", description="채널 참여자에게 랜덤 순서를 부여하고 게임을 시작합니다.")
 async def start(interaction: discord.Interaction):
-    global order_map, order_list
+    global order_map, order_list, active
 
     members = [m for m in interaction.channel.members if not m.bot]
 
@@ -42,38 +50,71 @@ async def start(interaction: discord.Interaction):
         await interaction.response.send_message("👀 최소 2명 이상이 있어야 게임을 시작할 수 있습니다.", ephemeral=True)
         return
 
-    random.shuffle(members)
     order_list = [m.id for m in members]
-    order_map = {m.id: i for i, m in enumerate(members)}
+    shuffle_order()
+    active = True
 
     await interaction.response.send_message(
         f"✨ 총 {len(members)}명이 참가했습니다! 순서가 무작위로 정해졌습니다. DM을 확인하세요!"
     )
 
-    # 각 사용자에게 DM 보내기
-    for i, member in enumerate(members):
-        await member.send(f"당신은 **{i+1}번째** 입니다.")
+    for i, uid in enumerate(order_list):
+        user = await bot.fetch_user(uid)
+        await user.send(f"당신은 **{i + 1}번째** 입니다.")
+
+
+@bot.tree.command(name="shuffle", description="현재 참가자 그대로 순서를 재랜덤합니다.")
+async def shuffle(interaction: discord.Interaction):
+    global active
+
+    if not active:
+        await interaction.response.send_message("⚠ 게임이 진행 중이 아닙니다. 먼저 /start 를 사용하세요.", ephemeral=True)
+        return
+
+    shuffle_order()
+
+    await interaction.response.send_message("🔀 순서를 다시 랜덤으로 정했습니다! DM을 확인하세요!")
+
+    for i, uid in enumerate(order_list):
+        user = await bot.fetch_user(uid)
+        await user.send(f"🔀 순서가 다시 정해졌습니다.\n당신은 **{i + 1}번째** 입니다.")
+
+
+@bot.tree.command(name="stop", description="게임을 종료하고 메시지 전달 기능을 비활성화합니다.")
+async def stop(interaction: discord.Interaction):
+    global order_map, order_list, active
+
+    if not active:
+        await interaction.response.send_message("⚠ 종료할 게임이 없습니다.", ephemeral=True)
+        return
+
+    order_map = {}
+    order_list = []
+    active = False
+
+    await interaction.response.send_message("🛑 게임이 종료되었습니다. 메시지 전달 기능이 비활성화됩니다.")
 
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
 
-    # DM에서만 동작
+    if not active:
+        return
+
+    # DM에서만 전달
     if message.guild is not None:
         return
     if message.author.bot:
-        return
-    if not order_map:
         return
     if message.author.id not in order_map:
         return
 
     idx = order_map[message.author.id]
-    next_idx = (idx + 1) % len(order_list)   # 마지막 번호는 다시 첫 번째로 순환
-    next_user_id = order_list[next_idx]
+    next_idx = (idx + 1) % len(order_list)
+    next_id = order_list[next_idx]
 
-    next_user = await bot.fetch_user(next_user_id)
+    next_user = await bot.fetch_user(next_id)
     await next_user.send(f"📩 전달된 메시지:\n\n{message.content}")
 
 bot.run(TOKEN)
