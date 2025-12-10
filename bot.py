@@ -22,6 +22,8 @@ order_map = {}      # user_id -> index in order_list
 order_list = []     # 순서대로 user_id 저장
 active = False      # 현재 진행중 여부
 game_channel = None # 게임이 실행된 채널 객체 저장
+received_list = {}  # idx -> True/Flase (수령 여부)
+status_UI = None
 
 
 @bot.event
@@ -40,6 +42,31 @@ def shuffle_order():
     random.shuffle(order_list)
     order_map = {uid: idx for idx, uid in enumerate(order_list)}
 
+
+def make_status_board():
+    """현황판 UI 생성"""
+    lines = [
+        "🎄 **선물 수령 현황판** 🎄",
+        "---------------------------------------"
+    ]
+    for idx, uid in enumerate(order_list):
+        check = "🎁" if received_list.get(idx) else "😢"
+        lines.append(f"{idx+1}번: {check}")
+
+    lines.append("---------------------------------------")
+    lines.append("✨ 모두 따뜻한 마음을 나눠주세요! ✨")
+    return "\n".join(lines)
+
+
+async def update_status_board():
+    global status_UI
+    if status_UI:
+        try:
+            await status_UI.edit(content=make_status_board())
+        except Exception as e:
+            print("Status update failed: ", e)
+
+
 @bot.tree.command(name="시작", description="현재 채널 참여자에게 랜덤 번호를 부여하고 DM을 보냅니다.")
 async def start(interaction: discord.Interaction):
     global order_map, order_list, active, game_channel
@@ -56,6 +83,11 @@ async def start(interaction: discord.Interaction):
     shuffle_order()
     active = True
 
+    global received_list, status_UI
+    received_list = { i: False for i in range(len(order_list))}
+    status_UI = await game_channel.send(make_status_board())
+    await status_UI.pin()
+
     await interaction.response.send_message(
         f"✨ 총 {len(members)}명이 참가했습니다! 순서가 무작위로 정해졌습니다. DM을 확인하세요!"
     )
@@ -63,13 +95,13 @@ async def start(interaction: discord.Interaction):
     # 각 사용자에게 DM 보내기
     for i, uid in enumerate(order_list):
         user = await bot.fetch_user(uid)
-        await user.send(f"당신은 **{i+1}번째** 입니다.")
+        await user.send(f"🎄 당신은 **{i+1}번째** 입니다.")
         await user.send(f"여기에 입력하는 채팅은 **{(i+1) % len(members)+1}번**에게 전달됩니다.")
 
 
 @bot.tree.command(name="랜덤", description="현재 참가자 그대로 순서를 재랜덤합니다.")
 async def shuffle(interaction: discord.Interaction):
-    global active
+    global active, received_list
 
     if not active:
         await interaction.response.send_message("⚠ 게임이 진행 중이 아닙니다. 먼저 /시작 을 사용하세요.", ephemeral=True)
@@ -83,6 +115,9 @@ async def shuffle(interaction: discord.Interaction):
         user = await bot.fetch_user(uid)
         await user.send(f"🔀 순서가 다시 정해졌습니다.\n당신은 **{i + 1}번째** 입니다.")
         await user.send(f"여기에 입력하는 채팅은 **{(i+1) % len(order_list) + 1}번**에게 전달됩니다.")
+
+    received_list = { i: False for i in range(len(order_list))}
+    await update_status_board()
 
 
 @bot.tree.command(name="종료", description="게임을 종료하고 메시지 전달 기능을 비활성화합니다.")
@@ -141,6 +176,34 @@ async def everyone(interaction: discord.Interaction, message: str = "", attachme
 
     await interaction.response.send_message("📨 메시지가 전송되었습니다.", ephemeral=True)
 
+@bot.tree.command(name="수령", description = "선물을 수령 처리합니다.")
+async def receive(interaction: discord.Interaction):
+    global active, order_map, received_list
+
+    if not active:
+        await interaction.response.send_message("⚠ 게임이 진행 중이 아닙니다.", ephemeral=True)
+        return
+
+    idx = order_map[interaction.user.id]
+    received_list[idx] = True
+
+    await update_status_board()
+    await interaction.response.send_message("🎁 수령 완료!", ephemeral = True)
+
+
+@bot.tree.command(name="취소", description = "수령 상태를 취소합니다.")
+async def cancel(interaction: discord.Interaction):
+    global active, order_map, received_list
+
+    if not active:
+        await interaction.response.send_message("⚠ 게임이 진행 중이 아닙니다.", ephemeral=True)
+        return
+
+    idx = order_map[interaction.user.id]
+    received_list[idx] = False
+
+    await update_status_board()
+    await interaction.response.send_message("수령 취소되었습니다.", ephemeral = True)
 
 @bot.event
 async def on_message(message):
