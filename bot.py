@@ -40,7 +40,7 @@ def shuffle_order():
     random.shuffle(order_list)
     order_map = {uid: idx for idx, uid in enumerate(order_list)}
 
-@bot.tree.command(name="start", description="현재 채널 참여자에게 랜덤 번호를 부여하고 DM을 보냅니다.")
+@bot.tree.command(name="시작", description="현재 채널 참여자에게 랜덤 번호를 부여하고 DM을 보냅니다.")
 async def start(interaction: discord.Interaction):
     global order_map, order_list, active, game_channel
 
@@ -64,14 +64,15 @@ async def start(interaction: discord.Interaction):
     for i, uid in enumerate(order_list):
         user = await bot.fetch_user(uid)
         await user.send(f"당신은 **{i+1}번째** 입니다.")
+        await user.send(f"여기에 입력하는 채팅은 **{(i+1) % len(members)+1}번**에게 전달됩니다.")
 
 
-@bot.tree.command(name="shuffle", description="현재 참가자 그대로 순서를 재랜덤합니다.")
+@bot.tree.command(name="랜덤", description="현재 참가자 그대로 순서를 재랜덤합니다.")
 async def shuffle(interaction: discord.Interaction):
     global active
 
     if not active:
-        await interaction.response.send_message("⚠ 게임이 진행 중이 아닙니다. 먼저 /start 를 사용하세요.", ephemeral=True)
+        await interaction.response.send_message("⚠ 게임이 진행 중이 아닙니다. 먼저 /시작 을 사용하세요.", ephemeral=True)
         return
 
     shuffle_order()
@@ -81,9 +82,10 @@ async def shuffle(interaction: discord.Interaction):
     for i, uid in enumerate(order_list):
         user = await bot.fetch_user(uid)
         await user.send(f"🔀 순서가 다시 정해졌습니다.\n당신은 **{i + 1}번째** 입니다.")
+        await user.send(f"여기에 입력하는 채팅은 **{(i+1) % len(order_list) + 1}번**에게 전달됩니다.")
 
 
-@bot.tree.command(name="stop", description="게임을 종료하고 메시지 전달 기능을 비활성화합니다.")
+@bot.tree.command(name="종료", description="게임을 종료하고 메시지 전달 기능을 비활성화합니다.")
 async def stop(interaction: discord.Interaction):
     global order_map, order_list, active
 
@@ -162,7 +164,7 @@ async def on_message(message):
 
     next_user = await bot.fetch_user(next_id)
     
-    content = f"📩{message.content}" if message.content.strip() else "📩"
+    content = f"📩 {message.content}" if message.content.strip() else "📩"
 
     if message.attachments:
         files = []
