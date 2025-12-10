@@ -98,6 +98,48 @@ async def stop(interaction: discord.Interaction):
     await interaction.response.send_message("🛑 게임이 종료되었습니다. 메시지 전달 기능이 비활성화됩니다.")
 
 
+@bot.tree.command(name="모두", description="모든 참가자에게 메시지를 전송합니다.(단체방에 전송)")
+@app_commands.describe(
+    message="보낼 메시지(선택)",
+    attachment="이미지 또는 파일(선택)"
+)
+async def everyone(interaction: discord.Interaction, message: str = "", attachment: discord.Attachment = None):
+    global active, order_map, order_list, game_channel
+
+    if not active:
+        await interaction.response.send_message("⚠ 게임이 진행 중이 아닙니다. 먼저 /시작 을 사용하세요.", ephemeral=True)
+        return
+
+    if interaction.user.id not in order_map:
+        await interaction.response.send_message("⚠ 당신은 게임 참가자가 아닙니다.", ephemeral=True)
+        return
+
+    if not game_channel:
+        await interaction.response.send_message("⚠ 단체 채널 정보를 찾지 못했습니다.", ephemeral=True)
+        return
+
+    idx = order_map[interaction.user.id]
+
+    if message.strip():
+        broadcast_msg = f"📢 **{idx+1}번의 메시지:** {message}"
+    else:
+        broadcast_msg = f"📢 **{idx+1}번의 메시지:**"
+
+    # 이미지/파일 있는 경우
+    if attachment:
+        file = await attachment.to_file()
+        await game_channel.send(broadcast_msg, file=file)
+    else:
+        # 텍스트만 있는 경우
+        if message.strip():
+            await game_channel.send(broadcast_msg)
+        # 둘 다 없는 경우
+        else:
+            await interaction.response.send_message("⚠ 메시지 또는 첨부파일 하나는 있어야 합니다.", ephemeral=True)
+
+    await interaction.response.send_message("📨 메시지가 전송되었습니다.", ephemeral=True)
+
+
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
@@ -114,18 +156,6 @@ async def on_message(message):
         return
 
     idx = order_map[message.author.id]
-
-    # 단체 채팅일 경우 처리
-    if message.content.startswith("/everyone"):
-        if game_channel:
-            broadcast_msg = message.content[len("/everyone"):].strip()
-            if broadcast_msg:
-                await game_channel.send(f"📢 **{idx+1}번의 메시지: {broadcast_msg}**")
-            else:
-                await message.author.send("⚠ `/everyone` 뒤에 보낼 메시지를 입력해주세요.")
-        else:
-            await message.author.send("⚠ 게임이 시작된 서버 채널을 찾지 못했습니다.")
-        return
     
     next_idx = (idx + 1) % len(order_list)
     next_id = order_list[next_idx]
