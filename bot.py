@@ -21,6 +21,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 order_map = {}      # user_id -> index in order_list
 order_list = []     # 순서대로 user_id 저장
 active = False      # 현재 진행중 여부
+game_channel = None # 게임이 실행된 채널 객체 저장
 
 
 @bot.event
@@ -41,8 +42,10 @@ def shuffle_order():
 
 @bot.tree.command(name="start", description="현재 채널 참여자에게 랜덤 번호를 부여하고 DM을 보냅니다.")
 async def start(interaction: discord.Interaction):
-    global order_map, order_list, active
+    global order_map, order_list, active, game_channel
 
+    game_channel = interaction.channel
+    
     members = [m for m in interaction.channel.members if not m.bot]
 
     if len(members) < 2:
@@ -111,6 +114,19 @@ async def on_message(message):
         return
 
     idx = order_map[message.author.id]
+
+    # 단체 채팅일 경우 처리
+    if message.content.startswith("/everyone"):
+        if game_channel:
+            broadcast_msg = message.content[len("/everyone"):].strip()
+            if broadcast_msg:
+                await game_channel.send(f"📢 **{idx+1}번의 메시지: {broadcast_msg}**")
+            else:
+                await message.author.send("⚠ `/everyone` 뒤에 보낼 메시지를 입력해주세요.")
+        else:
+            await message.author.send("⚠ 게임이 시작된 서버 채널을 찾지 못했습니다.")
+        return
+    
     next_idx = (idx + 1) % len(order_list)
     next_id = order_list[next_idx]
 
